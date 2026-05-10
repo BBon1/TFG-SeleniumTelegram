@@ -1,0 +1,6 @@
+# py -m pip install -r requirements.txt
+selenium
+webdriver_manager
+pymongo
+blinker == 1.7.0
+setuptools < 81.0.0
