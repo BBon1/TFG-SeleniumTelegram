@@ -10,9 +10,9 @@ def iniciarBD():
     """
     try:
         print("Inicializando base de datos desde cero")
-        entrada = input("La base de datos anterior será borrada antes de crear una nueva desde cero.\n¿Estás seguro de ello? [y/n]").strip().split()
-        cliente = MongoClient(url_bbddConection)
-        if entrada == 'y':
+        entrada = input("La base de datos anterior será borrada antes de crear una nueva desde cero.\n¿Estás seguro de ello? [y/n] ")
+        if entrada == "y":
+            cliente = MongoClient(url_bbddConection)
             cliente.drop_database(databaseName)
             bbdd = cliente.get_database(databaseName) # Crear/acceder base de datos
             collection = bbdd.get_collection(collectionName) # Crear/acceder coleccion
@@ -23,7 +23,7 @@ def iniciarBD():
         print("Algo ha salido mal al inicializar la base de datos desde cero - " + str(err))
         return 
 
-def connect() -> Collection|False:
+def connect() -> Collection|bool:
     """
     Conectarse a la base de datos. Devuelve directamente la colección de la base de datos (Solo hay una coleccion) 
     """
@@ -34,6 +34,7 @@ def connect() -> Collection|False:
             print(cliente.server_info()['version'])
             bbdd = cliente.get_database(databaseName)
             collection = bbdd.get_collection(collectionName)
+            print("Conexión con la base de datos iniciada correctamente")
             return collection
         except mongoErr.OperationFailure as err:
             print(err)
@@ -45,7 +46,7 @@ def closeDB():
     try:
         cliente = MongoClient(url_bbddConection)
         cliente.close()
-        print("Conexción con la base de datos cerrada")
+        print("Conexión con la base de datos cerrada")
     except Exception.ConnectionFailure as e:
         print("Error de conexión -> ", e)
     return

@@ -1,6 +1,8 @@
 # Selenium
 from selenium import webdriver
 from selenium.webdriver.remote.webelement import WebElement # Variable
+from selenium.webdriver.support.wait import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.common.actions.wheel_input import ScrollOrigin
 from selenium.webdriver.chrome.options import Options as OpChrome
@@ -10,7 +12,6 @@ from selenium.webdriver import Keys
 import selenium.common.exceptions as seleniumErr
 # Generales
 import time
-import re
 from datetime import datetime, timedelta
 from variables import *
 
@@ -33,6 +34,7 @@ def newDriverChrome() -> webdriver.Chrome:
     options.add_experimental_option("prefs",prefs)
     try:
         driver = webdriver.Chrome(options=options)
+        print("Navegador iniciado correctamente")
     except:
         print("Instalando drivers de Chrome")
         driver = webdriver.Chrome(executable_path=ChromeDriverManager().install(), options=options)
@@ -40,7 +42,7 @@ def newDriverChrome() -> webdriver.Chrome:
 
 def login(driver: webdriver.Chrome) -> bool: 
     """
-    Inicio de sesión semi-automático, el código de seguridad lo pide siempre.
+    Inicio de sesión semi-automático, Telegram siempre pide el código de seguridad.
     """
     print("Iniciando sesión en Telegram")
     driver.get(url_login)
@@ -57,13 +59,14 @@ def login(driver: webdriver.Chrome) -> bool:
         securityCode.send_keys(code) # Al recibirlo ya continua el proceso
         return True
     except seleniumErr.NoSuchElementException as err:
-        print("Algo salió mal con el inicio de sesión ->\n"+ err)
+        print("Algo salió mal con el inicio de sesión ->\n"+ str(err.msg))
         return False
 def loginQR(driver: webdriver) -> bool:  
     """
-    Inicio de sesión con QR, más rápido. No tocar la terminal de python mientras se carga.
+    Inicio de sesión con QR, más rápido. \nNo tocar la terminal de python mientras se carga.
     """
     driver.get(url_login)
+    input("¿Has iniciado sesión? (Pulsa Enter para continuar)")
     return True
     
 def openMenu(driver: webdriver.Chrome, menu: str) -> None: 
@@ -94,7 +97,7 @@ def openMenu(driver: webdriver.Chrome, menu: str) -> None:
                         time.sleep(1)
                         return
         except seleniumErr.NoSuchElementException as err:
-            print("Error con el menú ->\n" + str(err)) 
+            print("Error con el menú ->\n" + str(err.msg)) 
         time.sleep(1)    
     return
 
@@ -107,7 +110,7 @@ def scrollUpDown(driver: webdriver.Chrome, elemento: str) -> None:
     altura = driver.execute_script("return document.body.scrollHeight")
     if elemento == "chat":
         seccion = "div[class='messages-container']"
-        altura *= 3
+        altura *= 2
         direccion = -altura # hacia arriba
     elif elemento == "contactosP": # Contactos menú principal
         seccion = "div[class^='chat-list custom-scroll']" # 'chat-list custom-scroll no-overscroll'
@@ -119,13 +122,13 @@ def scrollUpDown(driver: webdriver.Chrome, elemento: str) -> None:
         seccion = "div[class='NiALUSnA es6RankF']"
         direccion = altura//2
     try:
-        webelement = driver.find_element(By.CSS_SELECTOR, seccion)
+        webelement = WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.CSS_SELECTOR, seccion)))
         for _ in range(0,5):
             scroll_origin = ScrollOrigin.from_element(webelement, 0, 0)
             ActionChains(driver).scroll_from_origin(scroll_origin, 0, direccion).perform()
             time.sleep(1) # Espera obligatoria para que cargue el contenido si hay 
     except seleniumErr.NoSuchElementException as err:
-        print("Algo salió mal al hacer scroll: " + str(err)) 
+        print("Algo salió mal al hacer scroll: " + str(err.msg)) 
     return
 
 def selectChat(driver: webdriver.Chrome, id_chat: str, contactos: list[tuple]) -> str|None: 
@@ -141,7 +144,7 @@ def selectChat(driver: webdriver.Chrome, id_chat: str, contactos: list[tuple]) -
                 c[3].click() # acceder al chat
                 return c[1] # name  
             except seleniumErr.ElementClickInterceptedException as err:
-                print("Ha surgido un error al seleccionar el chat: " + str(err))
+                print("Ha surgido un error al seleccionar el chat: " + str(err.msg))
                 return None
     print("Chat no encontrado en la lista proporcionada")
     return None
@@ -151,19 +154,19 @@ def getListChats(driver: webdriver.Chrome) -> list[tuple]:
     Recolecta todos los contactos, grupos y canales de la cuenta
     lista[(id_user/chat, nombre, menu, webElement)]
     """
-    print("Listando todos los chats y contactos de la cuenta...")
-    chatsPrincipal = auxChats(driver, "principal") 
+    print("Recopilando todos los chats y contactos de la cuenta...")
+    ids = set()
+    chats, ids = auxChats(driver, "principal", ids) 
     openMenu(driver,"contactos")  
-    chatsUsuarios = auxChats(driver, "contactos")   
-    chats = list(chatsPrincipal.union(chatsUsuarios))  
+    chatUsuarios, ids = auxChats(driver, "contactos", ids)   
+    chats.extend(chatUsuarios)
     print("Número de chats encontrados: " + str(len(chats))) 
     return chats # una lista de tuplas sin duplicados
-def auxChats(driver: webdriver.Chrome, menu: str) -> set:
+def auxChats(driver: webdriver.Chrome, menu: str, ids: set) -> list:
     """
     Función auxiliar para extraer los contactos, grupos, canales, bots, etc de la cuenta de Telegram
     """
-    conjunto = set()
-    ids = set()
+    conjunto = []
     contador = -1
     elemento = "a[class='ListItem-button']" if menu == "principal" else "div[class='ListItem chat-item-clickable contact-list-item']"
     scroll = "contactosP" if menu == "principal" else "contactosC"
@@ -176,22 +179,22 @@ def auxChats(driver: webdriver.Chrome, menu: str) -> set:
                 id = c.find_element(By.CSS_SELECTOR, "div[class^='Avatar']").get_attribute('data-peer-id')
                 if id not in ids:
                     name = c.find_element(By.CSS_SELECTOR, "div[class='title QljEeKI5']").get_attribute("innerText")
-                    conjunto.add((id, name, menu ,c)) # (id_chat / name / menu / webElement)
+                    conjunto.append((id, name, menu ,c)) # (id_chat / name / menu / webElement)
                     ids.add(id)
             scrollUpDown(driver, scroll) # sacar más contactos
             time.sleep(1)
         except seleniumErr.NoSuchElementException as err:
-            print("Algo ha salido mal extraer la lista de contactos de "+ menu +"\n" + str(err))
+            print("Algo ha salido mal extraer la lista de contactos de "+ menu +"\n" + str(err.msg))
             contador = len(conjunto) # cortar el bucle while
-    return conjunto
+    return conjunto, ids
 
 def getInfoChat(driver: webdriver.Chrome, id_chat: str, name: str) -> dict:  
     """
     Extraer información visible de un usuario, grupo, canal, comunidad...
     """
     info = {
-        "id": id_chat,
-        "name": name,
+        "id_chat": id_chat,
+        "name_chat": name,
         "type": "",
         "avatar": "",
         "fullName": "",
@@ -200,8 +203,8 @@ def getInfoChat(driver: webdriver.Chrome, id_chat: str, name: str) -> dict:
     }
     print("Extrayendo información del chat...")
     try:
-        middle = driver.find_element(By.CSS_SELECTOR, "div[class='MiddleHeader']") 
-        middle.find_element(By.CSS_SELECTOR, "h3[role='button']").click() # abrir la pestaña de info
+        middle = WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.CSS_SELECTOR, "div[class='MiddleHeader']")))
+        WebDriverWait(middle, 10).until(EC.presence_of_element_located((By.CSS_SELECTOR, "h3[class^='fullName']"))).click()
         right = driver.find_element(By.CSS_SELECTOR, "div[id='RightColumn']")
         info["type"] = right.find_element(By.CSS_SELECTOR, "h3[class='title']").get_attribute('innerText') # User info / Bot info / Group info / Topic...
         profile = right.find_element(By.CSS_SELECTOR, "div[class='r8nY6BZB profile-info']")
@@ -217,8 +220,8 @@ def getInfoChat(driver: webdriver.Chrome, id_chat: str, name: str) -> dict:
             info["fullName"] = profile.find_element(By.CSS_SELECTOR, "h3[class^='fullName']").get_attribute('innerText')
             info["status"] = profile.find_element(By.CSS_SELECTOR, "[class$='status']").get_attribute('innerText')
         else:
-            info["fullName"] = profile.find_element(By.CSS_SELECTOR, "h3[class='hjk4U031']")
-            info["status"] = profile.find_element(By.CSS_SELECTOR, "p[class='GXxwbzqF']")
+            info["fullName"] = profile.find_element(By.CSS_SELECTOR, "h3[class='hjk4U031']").get_attribute('innerText')
+            info["status"] = profile.find_element(By.CSS_SELECTOR, "p[class='GXxwbzqF']").get_attribute('innerText')
         chatExtra = profile.find_element(By.CSS_SELECTOR, "div[class^='ChatExtra']") 
         chatExtra = chatExtra.find_elements(By.XPATH, "*")  # getchild elements
         chatExtra.pop() # quitar el elemento "Notifications"
@@ -227,7 +230,7 @@ def getInfoChat(driver: webdriver.Chrome, id_chat: str, name: str) -> dict:
             subtitle = c.find_element(By.CSS_SELECTOR, "[class='subtitle']").get_attribute('innerText')  
             info["extras"].append(subtitle+": "+title)
         if info["type"] == "Group Info":
-            m = right.find_element(By.CSS_SELECTOR, "div[class='NiALUSnA es6RankF']")
+            m = WebDriverWait(right, 10).until(EC.presence_of_element_located((By.CSS_SELECTOR, "div[class='NiALUSnA es6RankF']")))
             contador = -1
             info.update({"members": []})
             nombres = set()
@@ -242,31 +245,15 @@ def getInfoChat(driver: webdriver.Chrome, id_chat: str, name: str) -> dict:
                         s = auxM.find_element(By.CSS_SELECTOR, "span[class='user-status']").get_attribute('innerText') # status
                         nombres.add(n) 
                         info["members"].append(n + " - " + s + " - " + r) # nombre - status - rol
-                loadMembers(driver)
+                scrollUpDown(driver, "miembros") 
     except seleniumErr.NoSuchElementException as err:
-        print("Error al extraer información del chat -> " +str(err))
+        print("Error al extraer información del chat -> " +str(err.msg))
     except seleniumErr.ElementNotInteractableException as e:
-        print("Error al interactiar con un elemento web -> " +str(e))
-    print("Extracción completada")
+        print("Error al interactiar con un elemento web -> " +str(e.msg))
+    except seleniumErr.TimeoutException as t:
+        print("Error de tiempo con los elementos a esperar -> " +str(t.msg))
+    print("¡Extracción de la información del chat completada!")
     return info
-def loadMembers(driver: webdriver.Chrome):
-    """
-    Forzar a la lista de miembros a ser ampliada y cargar más miembros. Refinar (!)
-    """
-    try:
-        aux = driver.find_element(By.CSS_SELECTOR, "div[class='Transition shared-media-transition']")
-        string = aux.get_attribute('style')
-        matches = re.findall(r'-?\d*\.?\d+', string)
-        res = [float(x) if '.' in x else int(x) for x in matches]
-        res[1] += 1500
-        string = 'height: '+ str(res[0])+'px; flex-basis: '+ str(res[1])+'px; min-height: '+ str(res[2])+'px;'
-        driver.execute_script("arguments[0].setAttribute('style',arguments[1])", aux, string)
-        scrollUpDown(driver, "miembros") 
-        time.sleep(1)
-        scrollUpDown(driver, "miembros") 
-    except:
-        print("Error al buscar más miembros del grupo") 
-    return
 
 def getMessageIndiv(driver: webdriver.Chrome, name: str) -> dict: 
     mensajes = {
@@ -280,68 +267,71 @@ def getMessageIndiv(driver: webdriver.Chrome, name: str) -> dict:
         contador = len(mensajes["mensajes"])
         try:
             bloquesMensajes = driver.find_elements(By.CSS_SELECTOR, "div[class^='message-date-group']") 
-            for bloque in bloquesMensajes[::-1]: #agrupaciones por fecha
+            for bloque in bloquesMensajes: #agrupaciones por fecha
                 fecha = bloque.find_element(By.CSS_SELECTOR, "span[dir='auto']").get_attribute('innerText') # mes día, año*(no aparece si es el año actual)
                 listaMensajes = bloque.find_elements(By.CSS_SELECTOR, "div[id^='message-']")
-                for unidad in listaMensajes[::-1]: # procesar los mensajes uno a uno
+                for unidad in listaMensajes: # procesar los mensajes uno a uno
                     id = unidad.get_attribute('data-message-id')
                     if id not in ids:
-                        ActionChains(driver).scroll_to_element(aux).perform()
                         ids.add(id) # actualizar ids
+                        time.sleep(1)
                         resultado = getMessage(id, unidad ,fecha, name)
                         mensajes["mensajes"].update(resultado) # añadir info mensajes al diccionario, con id del mensaje como identificador
             scrollUpDown(driver, "chat") # generar mas mensajes
             time.sleep(2)
-        except seleniumErr as err:
-            print("Error al extraer mensajes - " + str(err))
-            contador = len(mensajes["mensajes"])
+        except seleniumErr.NoSuchElementException as err:
+            print("Error al extraer mensajes NoSuchElementException - " + str(err.msg))
+        except seleniumErr.StaleElementReferenceException as sta:
+            print("Error al extraer mensajes StaleElementReferenceException - " + str(sta.msg))
     mensajes["num_mensajes"] = len(mensajes["mensajes"])
-    print("¡Extracción completada!")
+    print("¡Extracción de los mensajes completada!")
     return mensajes
-def getMessageGroup(driver: webdriver.Chrome, community = None) -> dict:
+def getMessageGroup(driver: webdriver.Chrome, group = None) -> dict:
     mensajes = { 
-        "comunidad": community,
+        "group": group,
         "num_mensajes": -1,
         "mensajes": dict() 
     } 
     print("Extrayendo mensajes de la conversación...")
-    if community == None:
-        mensajes.pop("comunidad")
+    if group == None:
+        mensajes.pop("group")
     ids = set() # no repetir mensajes
     contador = -1
     while contador != len(mensajes["mensajes"]):
         contador = len(mensajes["mensajes"])
         try:
             bloquesMensajes = driver.find_elements(By.CSS_SELECTOR, "div[class^='message-date-group']") 
-            for bloqueMensajesFecha in bloquesMensajes[::-1]: # agrupación por fechas
+            for bloqueMensajesFecha in bloquesMensajes: # agrupación por fechas
                 fecha = bloqueMensajesFecha.find_element(By.CSS_SELECTOR, "span[dir='auto']").get_attribute('innerText') # mes día, año*(no aparece si es el año actual)
                 bloqueMensajesUsuario = bloqueMensajesFecha.find_elements(By.CSS_SELECTOR, "div[id^='message-group-']") 
                 if len(bloqueMensajesUsuario):
-                    for message in bloqueMensajesUsuario[::-1]: #agrupaciones por usuarios / si hay
+                    for message in bloqueMensajesUsuario: #agrupaciones por usuarios / si hay
                         sender = auxSender(message)
                         m = message.find_elements(By.CSS_SELECTOR, "div[id^='message-']")
-                        for aux in m[::-1]: # procesar los mensajes uno a uno
+                        for aux in m: # procesar los mensajes uno a uno
                             id = aux.get_attribute('data-message-id')
                             if id not in ids:
-                                ActionChains(driver).scroll_to_element(aux).perform()
                                 ids.add(id)
+                                time.sleep(1)
                                 resultado = getMessage(id, aux, fecha, sender)
                                 mensajes["mensajes"].update(resultado)
-                else: # mensaje del sistema(mensajes centrales)
-                    messages = bloqueMensajesFecha.find_elements(By.CSS_SELECTOR, "div[id^='message-']")
-                    for aux in messages: # procesar los mensajes uno a uno
-                        id = aux.get_attribute('data-message-id')
+                else:
+                    aux = bloqueMensajesFecha.find_elements(By.CSS_SELECTOR, "div[id^='message-']")
+                    for a in aux:
+                        id = a.get_attribute('data-message-id')
                         if id not in ids:
                             ids.add(id)
-                            resultado = auxMessageSystem(id, aux, fecha)
+                            time.sleep(1)
+                            resultado = getMessage(id, a, fecha, "Sistema")
                             mensajes["mensajes"].update(resultado)
             scrollUpDown(driver, "chat") # generar mas mensajes
             time.sleep(2)
         except seleniumErr.NoSuchElementException as err:
-            print("Error al extraer mensajes - " + str(err))
-            contador = len(mensajes["mensajes"])
+            print("Error al extraer mensajes NoSuchElementException - " + str(err.msg))
+        except seleniumErr.StaleElementReferenceException as sta:
+            print("Error al extraer mensajes StaleElementReferenceException - " + str(sta.msg))
     mensajes["num_mensajes"] = len(mensajes["mensajes"])
-    print("¡Extracción completada!")
+    print("¡Extracción de los mensajes completada!")
     return mensajes
 def auxSender(mensaje:WebElement) -> dict:
     sender = {
@@ -359,7 +349,7 @@ def auxSender(mensaje:WebElement) -> dict:
             sender["name_user"] = userData[0].get_attribute('aria-label')
             sender["avatar"] = "Avatar por defecto"
     return sender
-def auxMessageSystem(id: int,message: WebElement, date:str) -> dict:
+def auxMessageSystem(id: str,message: WebElement, date:str) -> dict:
     objeto = {
         id: {
             "sender": "Sistema",
@@ -372,7 +362,7 @@ def auxMessageSystem(id: int,message: WebElement, date:str) -> dict:
     if len(centro):
         objeto[id]["content"].append(centro[0].get_attribute('innerText'))
     return objeto
-def getMessage(id: int,message: WebElement, date:str, sender: str|dict) -> dict:
+def getMessage(id: str,message: WebElement, date:str, sender: str|dict) -> dict:
     """
     Extraer y dar estructura de diccionario a los datos de un mensaje.
     """
@@ -398,9 +388,13 @@ def getMessage(id: int,message: WebElement, date:str, sender: str|dict) -> dict:
     if date == "Today":
         date = datetime.strftime(datetime.now(), '%Y-%m-%d')
     elif date == "Yesterday":
-        date = datetime.strftime(datetime.now() - timedelta(1), '%Y-%m-%d')    
-    hour = message.find_element(By.CSS_SELECTOR, "span[class='message-time']").get_attribute('innerText')
-    objeto[id]["date"] = hour + " " + date    
+        date = datetime.strftime(datetime.now() - timedelta(1), '%Y-%m-%d')   
+    try: 
+        hour = message.find_element(By.CSS_SELECTOR, "span[class='message-time']").get_attribute('innerText')
+        objeto[id]["date"] = hour + " " + date
+    except: # Es un mensaje central - información del sistema
+        objeto = auxMessageSystem(id, message ,date)
+        return objeto
     # Tipo de contenido posible
     text = message.find_elements(By.CSS_SELECTOR, "div[class^='text-content']") # texto
     media = message.find_elements(By.CSS_SELECTOR, "div[class*='media-inner']") # imagen/sticker/video/Gif/Emoji
@@ -483,9 +477,7 @@ def getMessage(id: int,message: WebElement, date:str, sender: str|dict) -> dict:
             objeto[id].update({"adicional": views[0].get_attribute('title')})  
             objeto[id]["sender"] = "Administrador del canal"   
     except seleniumErr.NoSuchElementException as err:
-        print(err)
-    except BaseException as berr:
-        print(berr)
+        print("Error en la extracción del mensaje: "+ id +"\n"+ str(err.msg))
     return objeto
 
 def getInfo(driver: webdriver.Chrome, id_chat: str, contactos: list[tuple]) -> list|dict|None:
@@ -498,21 +490,22 @@ def getInfo(driver: webdriver.Chrome, id_chat: str, contactos: list[tuple]) -> l
         if "-" in id_chat: # es un grupo/canal
             prev = driver.find_elements(By.CSS_SELECTOR, "div[class='lrlHKC_D']") 
             if len(prev) > 0: # Es una comunidad con varios chats asociados
-                grupos = prev[0].find_elements(By.CSS_SELECTOR, "a[class='ListItem-button']") # Temas del grupo
-                principal = prev[0].find_element(By.CSS_SELECTOR, "h3[role='button']") # Grupo principal
+                topics = prev[0].find_elements(By.CSS_SELECTOR, "a[class='ListItem-button']") # Temas del grupo
+                WebDriverWait(prev[0], 10).until(EC.element_to_be_clickable((By.CSS_SELECTOR, "div[class='title QljEeKI5']"))).click()
                 listaMensajes = []
                 listaInfo = []
-                for g in grupos:
-                    id_subChat = g.get_attribute('href').removeprefix("https://web.telegram.org/a/#")
-                    name_subChat = g.find_element(By.TAG_NAME, 'h3').get_attribute('innerText')
-                    g.click() # Acceder al chat
-                    print("Id: "+id_subChat + " / Chat: "+ name_subChat + " / Comunidad: "+ name)
-                    listaMensajes.append(getMessageGroup(driver, name))
-                    listaInfo.append(getInfoChat(driver, id_subChat, name_subChat))
-                principal.click() # Acceder al chat principal
                 print("Id: "+id_chat + " / Chat: "+ name)
                 listaMensajes.append(getMessageGroup(driver, name))
                 listaInfo.append(getInfoChat(driver, id_chat, name))
+                listaInfo[0].update(listaMensajes[0])
+                for t in topics:
+                    t.click() # Acceder al chat
+                    time.sleep(1)
+                    id_subChat = t.get_attribute('href').removeprefix("https://web.telegram.org/a/#")
+                    name_subChat = t.find_element(By.TAG_NAME, 'h3').get_attribute('innerText')
+                    print("Id: "+id_subChat + " / Tema: "+ name_subChat + " / Grupo: "+ name)
+                    listaMensajes.append(getMessageGroup(driver, name))
+                    listaInfo.append(getInfoChat(driver, id_subChat, name_subChat))
                 for i in range(len(listaMensajes)):
                     listaInfo[i].update(listaMensajes[i])    
                 prev[0].find_element(By.CSS_SELECTOR, "button[title='Close']").click()    
