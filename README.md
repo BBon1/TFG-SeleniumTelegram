@@ -22,3 +22,8 @@ Objetivos / Alcance:
 [ ] Modelo de inteligencia artificial de análisis
 
 [ ] Anonimizar datos personales
+
+
+Aviso
+-------------------------------------------------------------------------------
+El correcto funcionamiento del código se ha realizado con la versión Telegram Air v2.10.3 (web ver.a) implementada el 15 de mayo de 2026. Para otras versiones anteriores o posteriores no se asegura el funcionamiento de la herramienta de scraping.
